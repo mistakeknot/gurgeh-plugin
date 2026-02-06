@@ -26,16 +26,35 @@ OUTPUT_DIR = {PLAN_DIR}/../research/flux-drive/{PLAN_STEM}
 
 ## Phase 1: Analyze Plan + Static Triage
 
+### Step 1.0: Codebase Reality Check
+
+**Before profiling the plan**, verify the plan matches the actual codebase. Plans often diverge from implementation — tech stack pivots, framework changes, or features that were never built.
+
+1. Check the project root for build system files:
+   ```bash
+   ls {PROJECT_ROOT}/  # Look for Cargo.toml, go.mod, package.json, etc.
+   ```
+2. Compare what you find against what the plan describes (language, framework, architecture)
+3. If there is a **significant divergence** (e.g., plan says Swift but code is Rust+TS):
+   - Note it in the plan profile as `divergence: [description]`
+   - Read 2-3 key codebase files to understand the actual tech stack
+   - Use the **actual** tech stack for triage, not the plan's
+   - All agent prompts must include the divergence context and actual file paths
+
+A plan-codebase divergence is itself a P0 finding — every agent should be told about it.
+
 ### Step 1.1: Analyze the Plan
 
 Read the plan file at `PLAN_FILE`. Extract a structured profile:
 
 ```
 Plan Profile:
-- Languages: [list]
-- Frameworks: [list]
+- Languages: [list — from CODEBASE if diverged, not just the plan]
+- Frameworks: [list — from CODEBASE if diverged]
 - Domains touched: [architecture, security, performance, UX, data, API, etc.]
 - Technologies: [specific tech mentioned]
+- Divergence: [none | description of plan-vs-codebase mismatch]
+- Key codebase files: [list 3-5 actual files agents should read, if diverged]
 - Section analysis:
   - [Section name]: [thin/adequate/deep] — [1-line summary]
   - ...
@@ -164,12 +183,27 @@ You are reviewing a plan for potential improvements and issues.
 Project root: {PROJECT_ROOT}
 Plan file: {PLAN_FILE}
 
+[If plan-codebase divergence was detected in Step 1.0, add:]
+
+CRITICAL CONTEXT: The plan describes [plan's tech stack] but the actual
+codebase uses [actual tech stack]. Key actual files to read:
+- [file1] — [what it contains]
+- [file2] — [what it contains]
+- [file3] — [what it contains]
+Review the ACTUAL CODEBASE, not the outdated plan code. Note divergence
+as a finding.
+
 ## Plan to Review
 
 [Include ONLY the plan sections relevant to this agent's focus area.
 For large plans (200+ lines), trim sections outside the agent's domain
 to a 1-line summary each. Always include: Summary, Goals, Non-Goals,
 and the specific sections listed in "Focus on" below.]
+
+[When divergence exists, also list specific things for THIS agent to
+check in the actual codebase — file paths, line numbers, known issues
+you spotted during Step 1.0. This front-loads context so agents don't
+waste cycles being confused by phantom code.]
 
 ## Your Focus Area
 
@@ -257,23 +291,30 @@ If an agent's output file doesn't exist or is empty, note it as "no findings" an
 
 1. **Group findings by plan section** — organize all agent findings under the plan section they apply to
 2. **Deduplicate**: If multiple agents flagged the same issue, keep the most specific one (prefer Tier 1/2 over Tier 3)
-3. **Flag conflicts**: If agents disagree, note both positions
-4. **Priority from codebase-aware agents**: When a Tier 1/2 and Tier 3 agent give different advice on the same topic, prefer the codebase-aware recommendation
+3. **Track convergence**: Note how many agents flagged each issue (e.g., "4/6 agents"). High convergence (3+ agents) = high confidence. Include convergence counts in the Issues to Address checklist.
+4. **Flag conflicts**: If agents disagree, note both positions
+5. **Priority from codebase-aware agents**: When a Tier 1/2 and Tier 3 agent give different advice on the same topic, prefer the codebase-aware recommendation
 
 ### Step 3.3: Update the Plan
 
-Read the current plan file, then add a summary section at the top:
+Read the current plan file. **Decide the update strategy:**
+
+- **Amend** (default): Add findings to the existing plan. Use when the plan is mostly correct and findings are incremental improvements.
+- **Flag for archival**: When the plan is fundamentally obsolete (e.g., wrong tech stack, wrong architecture), add a prominent warning at the top recommending the plan be archived and rewritten. Still add findings — they apply to the actual codebase even if the plan is wrong.
+
+Add a summary section at the top:
 
 ```markdown
 ## Flux Drive Enhancement Summary
 
 Reviewed by N agents (M codebase-aware, K generic) on YYYY-MM-DD.
+[If divergence detected:] **WARNING: This plan is outdated.** The codebase has diverged from the plan's [tech stack]. Consider archiving this plan and writing a new one.
 
 ### Key Findings
-- [Top 3-5 findings across all agents]
+- [Top 3-5 findings across all agents, with convergence: "(N/M agents)"]
 
 ### Issues to Address
-- [ ] [Issue 1 — from agent X] (severity)
+- [ ] [Issue 1 — from agents X, Y, Z] (severity, N/M agents)
 - [ ] [Issue 2 — from agent Y] (severity)
 - ...
 ```
