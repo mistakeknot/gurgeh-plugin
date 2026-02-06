@@ -1,0 +1,16 @@
+{
+  "name": "gurgeh-plugin",
+  "version": "0.1.0",
+  "description": "Flux Drive — intelligent plan deepening with codebase-aware agents. Triages relevant reviewers and creates project-specific specialists instead of launching 40+ generic agents.",
+  "author": {
+    "name": "mistakeknot"
+  },
+  "license": "MIT",
+  "keywords": [
+    "plan",
+    "review",
+    "agents",
+    "triage",
+    "codebase-aware"
+  ]
+}
