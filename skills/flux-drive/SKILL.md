@@ -11,14 +11,16 @@ You are executing the flux-drive skill. This skill deepens a plan file by launch
 
 The user provides a plan file path as an argument. If no path is provided, ask for one using AskUserQuestion.
 
-Store the plan file path and derive the output directory for use throughout all phases:
+Store the plan file path and derive paths for use throughout all phases:
 ```
-PLAN_FILE = <the path the user provided>
-PLAN_DIR  = <directory containing PLAN_FILE>
-OUTPUT_DIR = {PLAN_DIR}/../research/flux-drive
+PLAN_FILE  = <the path the user provided>
+PLAN_DIR   = <directory containing PLAN_FILE>
+PLAN_STEM  = <filename of PLAN_FILE without extension>
+PROJECT_ROOT = <nearest ancestor directory containing .git, or PLAN_DIR>
+OUTPUT_DIR = {PLAN_DIR}/../research/flux-drive/{PLAN_STEM}
 ```
 
-**Note:** The output directory is derived from the plan file's location, not the current working directory. This ensures cross-project reviews write research files alongside the plan, not in the invoking project's directory.
+**Critical:** Resolve `OUTPUT_DIR` to an **absolute path** before using it in agent prompts. Agents inherit the main session's CWD, so relative paths write to the wrong project during cross-project reviews.
 
 ---
 
@@ -52,11 +54,13 @@ Consult the **Agent Roster** below and score each agent against the plan profile
 
 **Tier bonuses**: Tier 1 agents get +1 (they know this codebase). Tier 2 agents get +1 (project-specific).
 
+**Cross-project awareness**: If the plan is for a different project than the one where gurgeh-plugin is installed, Tier 1 agents' codebase knowledge is for the *wrong* project. In this case, their tier bonus reflects domain expertise only — score them honestly and prefer Tier 3 agents when the domain overlap is the same but the codebase is different.
+
 **Selection rules**:
 1. All agents scoring 2+ are included
 2. Agents scoring 1 are included only if their domain covers a thin section
 3. **Cap at 8 agents total** (hard maximum)
-4. **Deduplication**: If a Tier 1 or Tier 2 agent covers the same domain as a Tier 3 agent, drop the Tier 3 one. Codebase-aware agents are strictly better.
+4. **Deduplication**: If a Tier 1 or Tier 2 agent covers the same domain as a Tier 3 agent, drop the Tier 3 one — unless the plan is for a different project (cross-project mode), in which case prefer the Tier 3 generic.
 5. Prefer fewer, more relevant agents over many marginal ones
 
 ### Step 1.3: User Confirmation
@@ -124,9 +128,9 @@ These are general-purpose reviewers without codebase-specific knowledge. Only us
 
 ### Step 2.0: Prepare output directory
 
-Create the research output directory before launching agents, using the path derived from the plan file location:
+Create the research output directory before launching agents. Resolve to an absolute path:
 ```bash
-mkdir -p {OUTPUT_DIR}
+mkdir -p {OUTPUT_DIR}  # Must be absolute, e.g. /root/projects/Foo/docs/research/flux-drive/my-plan-name
 ```
 
 ### Step 2.1: Launch agents
@@ -155,9 +159,17 @@ Launch all selected agents as parallel Task calls in a **single message**.
 ```
 You are reviewing a plan for potential improvements and issues.
 
+## Project Context
+
+Project root: {PROJECT_ROOT}
+Plan file: {PLAN_FILE}
+
 ## Plan to Review
 
-[Full plan content from PLAN_FILE]
+[Include ONLY the plan sections relevant to this agent's focus area.
+For large plans (200+ lines), trim sections outside the agent's domain
+to a 1-line summary each. Always include: Summary, Goals, Non-Goals,
+and the specific sections listed in "Focus on" below.]
 
 ## Your Focus Area
 
@@ -169,6 +181,8 @@ Depth needed: [thin sections need more depth, deep sections need only validation
 
 Write your findings to: {OUTPUT_DIR}/{agent-name}.md
 
+IMPORTANT: Use this EXACT absolute path. Do NOT use a relative path.
+
 The file MUST start with a YAML frontmatter block for machine-parseable synthesis:
 
 ---
@@ -177,16 +191,16 @@ tier: {1|2|3}
 issues:
   - id: P0-1
     severity: P0
-    section: "Phase 2"
+    section: "Section Name"
     title: "Short description of the issue"
   - id: P1-1
     severity: P1
-    section: "Signals Overlay"
+    section: "Section Name"
     title: "Short description"
 improvements:
   - id: IMP-1
     title: "Short description"
-    section: "Phase 2"
+    section: "Section Name"
 verdict: safe|needs-changes|risky
 ---
 
@@ -213,7 +227,7 @@ Be concrete. Reference specific plan sections by name. Don't give generic advice
 After launching all agents, tell the user:
 - How many agents were launched
 - That they are running in background
-- Estimated wait time (~2-3 minutes)
+- Estimated wait time (~3-5 minutes; codebase-aware agents take longer as they explore the repo)
 
 ---
 
@@ -223,16 +237,16 @@ After launching all agents, tell the user:
 
 **Do NOT start synthesis until all agents have completed.** Starting early leads to missed findings and plan re-edits.
 
-Wait by polling the output directory:
+Check completion by reading the task output files (preferred) or polling the output directory:
 ```bash
 ls {OUTPUT_DIR}/
 ```
 
-You expect N files (one per launched agent). Poll every 30 seconds. If all N files exist, proceed. If after 5 minutes some are missing, proceed with what you have and note missing agents as "no findings."
+You expect N files (one per launched agent). If using `ls`, poll every 30 seconds. If after 5 minutes some are missing, proceed with what you have and note missing agents as "no findings."
 
 ### Step 3.1: Collect Results
 
-For each agent's output file, read the **YAML frontmatter** first. This gives you a structured list of all issues and improvements without reading full prose. Only read the prose body if:
+For each agent's output file, read the **YAML frontmatter** first (first ~60 lines). This gives you a structured list of all issues and improvements without reading full prose. Only read the prose body if:
 - An issue needs more context to understand
 - You need to resolve a conflict between agents
 - The frontmatter is missing or malformed (fallback to reading Summary + Issues sections)
